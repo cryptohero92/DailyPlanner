@@ -1,23 +1,23 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, Swipeable } from 'react-native-gesture-handler';
 import { Colors } from '../theme/colors';
 import { Todo } from '../types';
 
 export const INDENT_SIZE = 24;
+export const ROW_HEIGHT = 48;
 
 interface Props {
   todo: Todo;
   depth: number;
-  isActive: boolean;
-  drag: () => void;
+  handleGesture: ReturnType<typeof Gesture.Pan>;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string, text: string) => void;
   colors: Colors;
 }
 
-export function TodoItem({ todo, depth, isActive, drag, onToggle, onDelete, onEdit, colors }: Props) {
+export function TodoItem({ todo, depth, handleGesture, onToggle, onDelete, onEdit, colors }: Props) {
   const swipeRef = useRef<Swipeable>(null);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(todo.text);
@@ -50,7 +50,7 @@ export function TodoItem({ todo, depth, isActive, drag, onToggle, onDelete, onEd
     </TouchableOpacity>
   );
 
-  const indentLeft = 16 + depth * INDENT_SIZE;
+  const indentLeft = 12 + depth * INDENT_SIZE;
 
   return (
     <Swipeable ref={swipeRef} renderRightActions={renderRightActions} overshootRight={false} friction={2}>
@@ -58,7 +58,7 @@ export function TodoItem({ todo, depth, isActive, drag, onToggle, onDelete, onEd
         style={[
           styles.row,
           {
-            backgroundColor: isActive ? colors.dragActive : colors.surface,
+            backgroundColor: colors.surface,
             borderBottomColor: colors.border,
             paddingLeft: indentLeft,
           },
@@ -69,21 +69,18 @@ export function TodoItem({ todo, depth, isActive, drag, onToggle, onDelete, onEd
           <View
             style={[
               styles.depthLine,
-              { left: indentLeft - INDENT_SIZE + 10, backgroundColor: colors.border },
+              { left: indentLeft - INDENT_SIZE + 9, backgroundColor: colors.border },
             ]}
           />
         )}
 
         {/* Drag handle — left side, long press to drag */}
         {!editing && (
-          <TouchableOpacity
-            onLongPress={drag}
-            delayLongPress={200}
-            style={styles.handle}
-            activeOpacity={0.5}
-          >
-            <Text style={[styles.handleIcon, { color: colors.secondaryText }]}>⠿</Text>
-          </TouchableOpacity>
+          <GestureDetector gesture={handleGesture}>
+            <View style={styles.handle}>
+              <Text style={[styles.handleIcon, { color: colors.secondaryText }]}>⠿</Text>
+            </View>
+          </GestureDetector>
         )}
 
         {/* Checkbox */}
@@ -121,7 +118,7 @@ export function TodoItem({ todo, depth, isActive, drag, onToggle, onDelete, onEd
                 { color: todo.completed ? colors.secondaryText : colors.text },
                 todo.completed && styles.strikethrough,
               ]}
-              numberOfLines={3}
+              numberOfLines={1}
             >
               {todo.text}
             </Text>
@@ -134,10 +131,10 @@ export function TodoItem({ todo, depth, isActive, drag, onToggle, onDelete, onEd
 
 const styles = StyleSheet.create({
   row: {
+    height: ROW_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     paddingRight: 16,
-    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   depthLine: {
@@ -148,7 +145,7 @@ const styles = StyleSheet.create({
   },
   handle: {
     paddingRight: 10,
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
   handleIcon: {
     fontSize: 20,
@@ -176,7 +173,6 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
-    lineHeight: 22,
   },
   strikethrough: {
     textDecorationLine: 'line-through',
@@ -184,7 +180,6 @@ const styles = StyleSheet.create({
   editInput: {
     flex: 1,
     fontSize: 16,
-    lineHeight: 22,
     padding: 0,
   },
   deleteAction: {

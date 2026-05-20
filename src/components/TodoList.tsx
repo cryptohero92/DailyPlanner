@@ -1,22 +1,27 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  runOnJS,
+  SharedValue,
+} from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { Colors } from '../theme/colors';
 import { Todo, FlatTodo } from '../types';
-import { TodoItem, INDENT_SIZE } from './TodoItem';
+import { TodoItem, INDENT_SIZE, ROW_HEIGHT } from './TodoItem';
 
-// How many pixels of rightward drag = one extra depth level
-const PX_PER_LEVEL = 60;
+// Horizontal pixels of drag = one extra depth level
+const PX_PER_LEVEL = 38;
 
 interface Props {
   todos: Todo[];
@@ -28,6 +33,7 @@ interface Props {
   onEdit: (id: string, text: string) => void;
 }
 
+/** DFS-flatten the parentId-based array into an ordered list with depths */
 function flattenTree(todos: Todo[]): FlatTodo[] {
   const childMap = new Map<string | null, Todo[]>();
   for (const todo of todos) {
@@ -46,109 +52,218 @@ function flattenTree(todos: Todo[]): FlatTodo[] {
   return result;
 }
 
-function computeParentId(flatItems: FlatTodo[], toIndex: number, newDepth: number): string | null {
-  if (newDepth === 0) return null;
-  for (let i = toIndex - 1; i >= 0; i--) {
-    if (flatItems[i].depth === newDepth - 1) return flatItems[i].todo.id;
-    if (flatItems[i].depth < newDepth - 1) break;
-  }
-  return null;
+// ── Shared drag state passed to every row ────────────────────────────────────
+interface DragState {
+  activeIndex: SharedValue<number>;
+  blockStart: SharedValue<number>;
+  blockEnd: SharedValue<number>;
+  headDepth: SharedValue<number>;
+  transY: SharedValue<number>;
+  dropGap: SharedValue<number>;
+  dropDepth: SharedValue<number>;
+  depthsSV: SharedValue<number[]>;
+  countSV: SharedValue<number>;
 }
 
-// ── Drop indicator line ───────────────────────────────────────────────────────
-// Mirrors the reference images: same level = line flush left, child = indented
-interface IndicatorProps {
-  dragDepth: Animated.SharedValue<number>;
+// ── A single draggable row ───────────────────────────────────────────────────
+interface RowProps {
+  item: FlatTodo;
+  index: number;
   colors: Colors;
+  drag: DragState;
+  commitDrop: (bStart: number, bEnd: number, gap: number, depth: number) => void;
+  setDragging: (b: boolean) => void;
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+  onEdit: (id: string, text: string) => void;
 }
 
-function DropIndicator({ dragDepth, colors }: IndicatorProps) {
-  const lineStyle = useAnimatedStyle(() => ({
-    marginLeft: 16 + dragDepth.value * INDENT_SIZE,
+function DraggableRow({
+  item,
+  index,
+  colors,
+  drag,
+  commitDrop,
+  setDragging,
+  onToggle,
+  onDelete,
+  onEdit,
+}: RowProps) {
+  const { activeIndex, blockStart, blockEnd, headDepth, transY, dropGap, dropDepth, depthsSV, countSV } =
+    drag;
+
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(220)
+        .onStart(() => {
+          const d = depthsSV.value;
+          let be = index;
+          for (let i = index + 1; i < d.length; i++) {
+            if (d[i] > d[index]) be = i;
+            else break;
+          }
+          activeIndex.value = index;
+          blockStart.value = index;
+          blockEnd.value = be;
+          headDepth.value = d[index];
+          transY.value = 0;
+          dropGap.value = index;
+          dropDepth.value = d[index];
+          runOnJS(setDragging)(true);
+        })
+        .onUpdate((e) => {
+          transY.value = e.translationY;
+          const count = countSV.value;
+
+          // vertical → drop gap
+          let g = Math.round((blockStart.value * ROW_HEIGHT + e.translationY) / ROW_HEIGHT);
+          if (g > blockStart.value && g <= blockEnd.value) {
+            g = e.translationY < 0 ? blockStart.value : blockEnd.value + 1;
+          }
+          if (g < 0) g = 0;
+          if (g > count) g = count;
+          dropGap.value = g;
+
+          // horizontal → depth, clamped to a valid level for that gap
+          const d = depthsSV.value;
+          let aboveIdx = g - 1;
+          if (aboveIdx >= blockStart.value && aboveIdx <= blockEnd.value) {
+            aboveIdx = blockStart.value - 1;
+          }
+          const maxDepth = aboveIdx >= 0 ? d[aboveIdx] + 1 : 0;
+          let raw = Math.round(headDepth.value + e.translationX / PX_PER_LEVEL);
+          if (raw < 0) raw = 0;
+          if (raw > maxDepth) raw = maxDepth;
+          dropDepth.value = raw;
+        })
+        .onEnd(() => {
+          runOnJS(commitDrop)(blockStart.value, blockEnd.value, dropGap.value, dropDepth.value);
+        })
+        .onFinalize(() => {
+          activeIndex.value = -1;
+          transY.value = 0;
+          runOnJS(setDragging)(false);
+        }),
+    // shared values are stable; rebuild only when index/commitDrop change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [index, commitDrop],
+  );
+
+  const rowStyle = useAnimatedStyle(() => {
+    const inBlock =
+      activeIndex.value >= 0 && index >= blockStart.value && index <= blockEnd.value;
+    if (!inBlock) {
+      return { transform: [{ translateY: 0 }, { translateX: 0 }], zIndex: 0, elevation: 0 };
+    }
+    return {
+      transform: [
+        { translateY: transY.value },
+        { translateX: (dropDepth.value - headDepth.value) * INDENT_SIZE },
+      ],
+      zIndex: 999,
+      elevation: 8,
+      opacity: 0.96,
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.rowContainer, rowStyle]}>
+      <TodoItem
+        todo={item.todo}
+        depth={item.depth}
+        handleGesture={pan}
+        onToggle={onToggle}
+        onDelete={onDelete}
+        onEdit={onEdit}
+        colors={colors}
+      />
+    </Animated.View>
+  );
+}
+
+// ── Drop indicator line (same level = flush, child = indented) ────────────────
+function DropLine({ drag, colors }: { drag: DragState; colors: Colors }) {
+  const style = useAnimatedStyle(() => ({
+    opacity: drag.activeIndex.value >= 0 ? 1 : 0,
+    top: drag.dropGap.value * ROW_HEIGHT - 1,
+    marginLeft: 12 + drag.dropDepth.value * INDENT_SIZE,
   }));
   return (
-    <View style={styles.placeholderWrap}>
-      <Animated.View style={[styles.placeholderLine, { backgroundColor: colors.accent }, lineStyle]} />
-    </View>
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.dropLine, { backgroundColor: colors.accent }, style]}
+    />
   );
 }
 
 export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, onEdit }: Props) {
   const [input, setInput] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
 
-  const dragDepth    = useSharedValue(0);
-  const startDepth   = useSharedValue(0);
-  const startAbsX    = useSharedValue(0);
-  const isDragging   = useSharedValue(false);
-
-  const flatItemsRef = useRef<FlatTodo[]>([]);
-  const flatItems    = flattenTree(todos);
+  const flatItems = useMemo(() => flattenTree(todos), [todos]);
+  const flatItemsRef = useRef<FlatTodo[]>(flatItems);
   flatItemsRef.current = flatItems;
 
-  // ── Passive gesture that observes touch X during DraggableFlatList drag ──
-  // manualActivation(true) keeps this in BEGAN state permanently, so it never
-  // competes with DraggableFlatList's internal gesture but still receives
-  // onTouchesMove events throughout the drag.
-  const trackGesture = Gesture.Pan()
-    .manualActivation(true)
-    .onTouchesDown((e) => {
-      const t = e.changedTouches[0];
-      if (t) startAbsX.value = t.absoluteX;
-    })
-    .onTouchesMove((e) => {
-      if (!isDragging.value) return;
-      const t = e.changedTouches[0];
-      if (!t) return;
-      const deltaX  = t.absoluteX - startAbsX.value;
-      const newDepth = Math.max(0, Math.round(startDepth.value + deltaX / PX_PER_LEVEL));
-      dragDepth.value = newDepth;
-    });
+  // Drag shared values
+  const drag: DragState = {
+    activeIndex: useSharedValue(-1),
+    blockStart: useSharedValue(0),
+    blockEnd: useSharedValue(0),
+    headDepth: useSharedValue(0),
+    transY: useSharedValue(0),
+    dropGap: useSharedValue(0),
+    dropDepth: useSharedValue(0),
+    depthsSV: useSharedValue<number[]>([]),
+    countSV: useSharedValue(0),
+  };
 
-  const onDragBegin = useCallback((index: number) => {
-    const depth = flatItemsRef.current[index]?.depth ?? 0;
-    isDragging.value  = true;
-    startDepth.value  = depth;
-    dragDepth.value   = depth;
-  }, [isDragging, startDepth, dragDepth]);
+  useEffect(() => {
+    drag.depthsSV.value = flatItems.map((f) => f.depth);
+    drag.countSV.value = flatItems.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatItems]);
 
-  const onDragEnd = useCallback(
-    ({ data, to }: { data: FlatTodo[]; from: number; to: number }) => {
-      isDragging.value = false;
-      const finalDepth  = dragDepth.value;
-      const newParentId = computeParentId(data, to, finalDepth);
-      const movedId     = data[to]?.todo.id;
+  const commitDrop = useCallback(
+    (bStart: number, bEnd: number, gap: number, depth: number) => {
+      const items = flatItemsRef.current;
+      if (!items.length) return;
 
-      const rebuilt = data.map((fi, i) =>
-        i === to && movedId
-          ? { ...fi, todo: { ...fi.todo, parentId: newParentId }, depth: finalDepth }
-          : fi,
+      const blockSize = bEnd - bStart + 1;
+      const block = items.slice(bStart, bEnd + 1);
+      const rest = [...items.slice(0, bStart), ...items.slice(bEnd + 1)];
+
+      let insertAt = gap <= bStart ? gap : gap - blockSize;
+      if (insertAt < 0) insertAt = 0;
+      if (insertAt > rest.length) insertAt = rest.length;
+
+      const newFlat = [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)];
+
+      // parent for the dragged head: nearest item above with depth = depth-1
+      let parentId: string | null = null;
+      if (depth > 0) {
+        for (let i = insertAt - 1; i >= 0; i--) {
+          const it = newFlat[i];
+          if (it.depth === depth - 1) {
+            parentId = it.todo.id;
+            break;
+          }
+          if (it.depth < depth - 1) break;
+        }
+      }
+
+      const newTodos: Todo[] = newFlat.map((fi, i) =>
+        i === insertAt ? { ...fi.todo, parentId } : fi.todo,
       );
-      onReorder(rebuilt.map(({ todo }) => todo));
+
+      const unchanged =
+        newTodos.length === items.length &&
+        newTodos.every(
+          (t, i) => t.id === items[i].todo.id && t.parentId === items[i].todo.parentId,
+        );
+      if (!unchanged) onReorder(newTodos);
     },
-    [dragDepth, isDragging, onReorder],
-  );
-
-  const renderItem = useCallback(
-    ({ item, drag, isActive }: RenderItemParams<FlatTodo>) => (
-      <ScaleDecorator activeScale={1.02}>
-        <TodoItem
-          todo={item.todo}
-          depth={item.depth}
-          isActive={isActive}
-          drag={drag}
-          onToggle={onToggle}
-          onDelete={onDelete}
-          onEdit={onEdit}
-          colors={colors}
-        />
-      </ScaleDecorator>
-    ),
-    [onToggle, onDelete, onEdit, colors],
-  );
-
-  const renderPlaceholder = useCallback(
-    () => <DropIndicator dragDepth={dragDepth} colors={colors} />,
-    [dragDepth, colors],
+    [onReorder],
   );
 
   const handleAdd = () => {
@@ -158,35 +273,39 @@ export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, 
     setInput('');
   };
 
-  const Empty = () => (
-    <View style={styles.emptyWrap}>
-      <Text style={styles.emptyIcon}>📋</Text>
-      <Text style={[styles.emptyText, { color: colors.secondaryText }]}>No tasks for this day</Text>
-      <Text style={[styles.emptyHint, { color: colors.secondaryText }]}>Add one below ↓</Text>
-    </View>
-  );
-
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <GestureDetector gesture={trackGesture}>
-        <View style={styles.listWrap}>
-          <DraggableFlatList<FlatTodo>
-            data={flatItems}
-            keyExtractor={(item) => item.todo.id}
-            renderItem={renderItem}
-            renderPlaceholder={renderPlaceholder}
-            onDragBegin={onDragBegin}
-            onDragEnd={onDragEnd}
-            ListEmptyComponent={<Empty />}
-            contentContainerStyle={flatItems.length === 0 ? styles.emptyContainer : undefined}
-            activationDistance={8}
-          />
+      {flatItems.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyIcon}>📋</Text>
+          <Text style={[styles.emptyText, { color: colors.secondaryText }]}>No tasks for this day</Text>
+          <Text style={[styles.emptyHint, { color: colors.secondaryText }]}>Add one below ↓</Text>
         </View>
-      </GestureDetector>
+      ) : (
+        <ScrollView scrollEnabled={!isDragging} keyboardShouldPersistTaps="handled">
+          <View style={styles.content}>
+            {flatItems.map((item, index) => (
+              <DraggableRow
+                key={item.todo.id}
+                item={item}
+                index={index}
+                colors={colors}
+                drag={drag}
+                commitDrop={commitDrop}
+                setDragging={setIsDragging}
+                onToggle={onToggle}
+                onDelete={onDelete}
+                onEdit={onEdit}
+              />
+            ))}
+            <DropLine drag={drag} colors={colors} />
+          </View>
+        </ScrollView>
+      )}
 
       <View style={[styles.inputRow, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <TextInput
@@ -213,27 +332,24 @@ export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, 
 }
 
 const styles = StyleSheet.create({
-  container:      { flex: 1 },
-  listWrap:       { flex: 1 },
-  emptyContainer: { flexGrow: 1 },
+  container: { flex: 1 },
+  content: { position: 'relative' },
+  rowContainer: { height: ROW_HEIGHT },
+  dropLine: {
+    position: 'absolute',
+    left: 0,
+    right: 16,
+    height: 2,
+    borderRadius: 1,
+  },
   emptyWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 60,
   },
-  emptyIcon:  { fontSize: 48, marginBottom: 12 },
-  emptyText:  { fontSize: 17, fontWeight: '500', marginBottom: 6 },
-  emptyHint:  { fontSize: 14 },
-  placeholderWrap: {
-    height: 28,
-    justifyContent: 'center',
-  },
-  placeholderLine: {
-    height: 2,
-    borderRadius: 1,
-    marginRight: 16,
-  },
+  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  emptyText: { fontSize: 17, fontWeight: '500', marginBottom: 6 },
+  emptyHint: { fontSize: 14 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
