@@ -1,24 +1,26 @@
 {
   "expo": {
-    "name": "Daily Planner",
-    "slug": "daily-planner",
+    "name": "Dayo",
+    "slug": "dayo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#1C1C1E"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.dailyplanner.app"
+      "bundleIdentifier": "com.dayo.app"
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1C1C1E"
       },
-      "package": "com.dailyplanner.app",
+      "package": "com.dayo.app",
       "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
