@@ -58,10 +58,7 @@ export function TodoItem({ todo, depth, isActive, drag, dragDepth, onToggle, onD
     Gesture.LongPress()
       .minDuration(200)
       .onStart(() => {
-        // Initialise depth when hold begins
         dragDepth.value = depth;
-      })
-      .onActivated(() => {
         runOnJS(drag)();
       }),
     Gesture.Pan()
