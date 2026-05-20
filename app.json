@@ -18,7 +18,8 @@
       "adaptiveIcon": {
         "backgroundColor": "#1C1C1E"
       },
-      "package": "com.dailyplanner.app"
+      "package": "com.dailyplanner.app",
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.png"
