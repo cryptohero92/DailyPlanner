@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -274,11 +272,7 @@ export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, 
   };
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
-    >
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {flatItems.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyIcon}>📋</Text>
@@ -327,7 +321,7 @@ export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, 
           <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

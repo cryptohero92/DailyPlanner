@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { StyleSheet, useColorScheme, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../components/Header';
 import { CalendarPanel } from '../components/CalendarPanel';
@@ -32,6 +32,10 @@ export default function MainScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <Header
         date={selectedDate}
         calendarVisible={calendarVisible}
@@ -63,10 +67,12 @@ export default function MainScreen() {
         onToggle={toggleTodo}
         onReorder={reorderTodos}
       />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  kav: { flex: 1 },
 });
