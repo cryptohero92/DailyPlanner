@@ -27,6 +27,11 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [],
-    "newArchEnabled": true
+    "newArchEnabled": true,
+    "extra": {
+      "eas": {
+        "projectId": "227806cb-16ef-40f3-bb29-4df2a1becd49"
+      }
+    }
   }
 }
