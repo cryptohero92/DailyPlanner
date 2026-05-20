@@ -1,4 +1,3 @@
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export function getTodayString(): string {
@@ -23,5 +22,5 @@ export function shiftDay(dateString: string, delta: number): string {
 export function formatHeader(dateString: string): string {
   const [y, m, d] = dateString.split('-').map(Number);
   const date = new Date(y, m - 1, d);
-  return `${DAYS[date.getDay()]}, ${MONTHS[date.getMonth()]} ${d}, ${y}`;
+  return `${MONTHS[date.getMonth()]} ${d}, ${y}`;
 }

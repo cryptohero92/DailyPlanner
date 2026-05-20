@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors } from '../theme/colors';
 import { formatHeader, shiftDay } from '../utils/date';
 
+const HISTORY_WIDTH = 80;
+
 interface Props {
   date: string;
   calendarVisible: boolean;
@@ -28,7 +30,10 @@ export function Header({
 }: Props) {
   return (
     <View style={[styles.container, { backgroundColor: colors.headerBackground, borderBottomColor: colors.border }]}>
-      {/* Date navigation group */}
+      {/* Left spacer — same width as history group to keep nav truly centered */}
+      <View style={styles.spacer} />
+
+      {/* Date navigation — centered */}
       <View style={styles.navGroup}>
         <TouchableOpacity
           onPress={() => onDateChange(shiftDay(date, -1))}
@@ -52,13 +57,12 @@ export function Header({
         </TouchableOpacity>
       </View>
 
-      {/* Undo / Redo */}
+      {/* Undo / Redo — pinned right */}
       <View style={styles.historyGroup}>
         <TouchableOpacity
           onPress={onUndo}
           disabled={!canUndo}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
-          style={styles.historyBtn}
         >
           <Text style={[styles.historyIcon, { color: canUndo ? colors.accent : colors.border }]}>{'↩'}</Text>
         </TouchableOpacity>
@@ -66,7 +70,6 @@ export function Header({
           onPress={onRedo}
           disabled={!canRedo}
           hitSlop={{ top: 10, bottom: 10, left: 6, right: 10 }}
-          style={styles.historyBtn}
         >
           <Text style={[styles.historyIcon, { color: canRedo ? colors.accent : colors.border }]}>{'↪'}</Text>
         </TouchableOpacity>
@@ -83,21 +86,25 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  spacer: {
+    width: HISTORY_WIDTH,
+  },
   navGroup: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   navArrow: {
     fontSize: 30,
     lineHeight: 34,
     fontWeight: '300',
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
   },
   dateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   dateText: {
     fontSize: 15,
@@ -108,12 +115,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   historyGroup: {
+    width: HISTORY_WIDTH,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-  },
-  historyBtn: {
-    paddingHorizontal: 6,
+    justifyContent: 'flex-end',
+    gap: 4,
   },
   historyIcon: {
     fontSize: 22,
