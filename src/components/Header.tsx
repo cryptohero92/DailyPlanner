@@ -8,34 +8,69 @@ interface Props {
   calendarVisible: boolean;
   onDateChange: (d: string) => void;
   onToggleCalendar: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   colors: Colors;
 }
 
-export function Header({ date, calendarVisible, onDateChange, onToggleCalendar, colors }: Props) {
+export function Header({
+  date,
+  calendarVisible,
+  onDateChange,
+  onToggleCalendar,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  colors,
+}: Props) {
   return (
     <View style={[styles.container, { backgroundColor: colors.headerBackground, borderBottomColor: colors.border }]}>
-      <TouchableOpacity
-        onPress={() => onDateChange(shiftDay(date, -1))}
-        style={styles.navBtn}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Text style={[styles.navArrow, { color: colors.accent }]}>{'‹'}</Text>
-      </TouchableOpacity>
+      {/* Date navigation group */}
+      <View style={styles.navGroup}>
+        <TouchableOpacity
+          onPress={() => onDateChange(shiftDay(date, -1))}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
+        >
+          <Text style={[styles.navArrow, { color: colors.accent }]}>{'‹'}</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity onPress={onToggleCalendar} style={styles.center} activeOpacity={0.7}>
-        <Text style={[styles.dateText, { color: colors.text }]}>{formatHeader(date)}</Text>
-        <Text style={[styles.calIcon, { color: calendarVisible ? colors.accent : colors.secondaryText }]}>
-          {'  📅'}
-        </Text>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={onToggleCalendar} style={styles.dateBtn} activeOpacity={0.7}>
+          <Text style={[styles.dateText, { color: colors.text }]}>{formatHeader(date)}</Text>
+          <Text style={[styles.calIcon, { color: calendarVisible ? colors.accent : colors.secondaryText }]}>
+            {'  📅'}
+          </Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        onPress={() => onDateChange(shiftDay(date, 1))}
-        style={styles.navBtn}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Text style={[styles.navArrow, { color: colors.accent }]}>{'›'}</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => onDateChange(shiftDay(date, 1))}
+          hitSlop={{ top: 10, bottom: 10, left: 6, right: 10 }}
+        >
+          <Text style={[styles.navArrow, { color: colors.accent }]}>{'›'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Undo / Redo */}
+      <View style={styles.historyGroup}>
+        <TouchableOpacity
+          onPress={onUndo}
+          disabled={!canUndo}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
+          style={styles.historyBtn}
+        >
+          <Text style={[styles.historyIcon, { color: canUndo ? colors.accent : colors.border }]}>{'↩'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onRedo}
+          disabled={!canRedo}
+          hitSlop={{ top: 10, bottom: 10, left: 6, right: 10 }}
+          style={styles.historyBtn}
+        >
+          <Text style={[styles.historyIcon, { color: canRedo ? colors.accent : colors.border }]}>{'↪'}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -44,32 +79,44 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  navBtn: {
-    width: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navArrow: {
-    fontSize: 32,
-    lineHeight: 36,
-    fontWeight: '300',
-  },
-  center: {
+  navGroup: {
     flex: 1,
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
   },
+  navArrow: {
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: '300',
+    paddingHorizontal: 2,
+  },
+  dateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
   dateText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     letterSpacing: 0.2,
   },
   calIcon: {
-    fontSize: 16,
+    fontSize: 15,
+  },
+  historyGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  historyBtn: {
+    paddingHorizontal: 6,
+  },
+  historyIcon: {
+    fontSize: 22,
+    lineHeight: 28,
   },
 });

@@ -16,7 +16,19 @@ export default function MainScreen() {
   const [selectedDate, setSelectedDate] = useState(getTodayString);
   const [calendarVisible, setCalendarVisible] = useState(false);
 
-  const { todos, store, addTodo, deleteTodo, toggleTodo, reorderTodos } = useTodos(selectedDate);
+  const {
+    todos,
+    store,
+    addTodo,
+    editTodo,
+    deleteTodo,
+    toggleTodo,
+    reorderTodos,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useTodos(selectedDate);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
@@ -25,6 +37,10 @@ export default function MainScreen() {
         calendarVisible={calendarVisible}
         onDateChange={setSelectedDate}
         onToggleCalendar={() => setCalendarVisible((v) => !v)}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
         colors={colors}
       />
 
@@ -42,6 +58,7 @@ export default function MainScreen() {
         todos={todos}
         colors={colors}
         onAdd={addTodo}
+        onEdit={editTodo}
         onDelete={deleteTodo}
         onToggle={toggleTodo}
         onReorder={reorderTodos}
@@ -51,7 +68,5 @@ export default function MainScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
+  root: { flex: 1 },
 });
