@@ -1,7 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { Gesture, GestureDetector, Swipeable } from 'react-native-gesture-handler';
-import { SharedValue, runOnJS } from 'react-native-reanimated';
+import { Swipeable } from 'react-native-gesture-handler';
 import { Colors } from '../theme/colors';
 import { Todo } from '../types';
 
@@ -12,14 +11,13 @@ interface Props {
   depth: number;
   isActive: boolean;
   drag: () => void;
-  dragDepth: SharedValue<number>;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string, text: string) => void;
   colors: Colors;
 }
 
-export function TodoItem({ todo, depth, isActive, drag, dragDepth, onToggle, onDelete, onEdit, colors }: Props) {
+export function TodoItem({ todo, depth, isActive, drag, onToggle, onDelete, onEdit, colors }: Props) {
   const swipeRef = useRef<Swipeable>(null);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(todo.text);
@@ -52,25 +50,6 @@ export function TodoItem({ todo, depth, isActive, drag, dragDepth, onToggle, onD
     </TouchableOpacity>
   );
 
-  // Gesture on the drag handle:
-  // LongPress activates DraggableFlatList drag; simultaneous Pan tracks horizontal depth.
-  const handleGesture = Gesture.Simultaneous(
-    Gesture.LongPress()
-      .minDuration(200)
-      .onStart(() => {
-        dragDepth.value = depth;
-        runOnJS(drag)();
-      }),
-    Gesture.Pan()
-      .onUpdate((e) => {
-        const newDepth = Math.max(
-          0,
-          Math.round((depth * INDENT_SIZE + e.translationX) / INDENT_SIZE),
-        );
-        dragDepth.value = newDepth;
-      }),
-  );
-
   const indentLeft = 16 + depth * INDENT_SIZE;
 
   return (
@@ -95,13 +74,16 @@ export function TodoItem({ todo, depth, isActive, drag, dragDepth, onToggle, onD
           />
         )}
 
-        {/* Drag handle — left side */}
+        {/* Drag handle — left side, long press to drag */}
         {!editing && (
-          <GestureDetector gesture={handleGesture}>
-            <View style={styles.handle}>
-              <Text style={[styles.handleIcon, { color: colors.secondaryText }]}>⠿</Text>
-            </View>
-          </GestureDetector>
+          <TouchableOpacity
+            onLongPress={drag}
+            delayLongPress={200}
+            style={styles.handle}
+            activeOpacity={0.5}
+          >
+            <Text style={[styles.handleIcon, { color: colors.secondaryText }]}>⠿</Text>
+          </TouchableOpacity>
         )}
 
         {/* Checkbox */}

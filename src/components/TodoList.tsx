@@ -9,10 +9,14 @@ import {
   Platform,
 } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { Colors } from '../theme/colors';
 import { Todo, FlatTodo } from '../types';
 import { TodoItem, INDENT_SIZE } from './TodoItem';
+
+// How many pixels of rightward drag = one extra depth level
+const PX_PER_LEVEL = 60;
 
 interface Props {
   todos: Todo[];
@@ -24,7 +28,6 @@ interface Props {
   onEdit: (id: string, text: string) => void;
 }
 
-/** DFS-flatten the parentId-based flat array into an ordered list with depths */
 function flattenTree(todos: Todo[]): FlatTodo[] {
   const childMap = new Map<string | null, Todo[]>();
   for (const todo of todos) {
@@ -43,7 +46,6 @@ function flattenTree(todos: Todo[]): FlatTodo[] {
   return result;
 }
 
-/** Nearest ancestor at depth-1 above toIndex */
 function computeParentId(flatItems: FlatTodo[], toIndex: number, newDepth: number): string | null {
   if (newDepth === 0) return null;
   for (let i = toIndex - 1; i >= 0; i--) {
@@ -53,56 +55,77 @@ function computeParentId(flatItems: FlatTodo[], toIndex: number, newDepth: numbe
   return null;
 }
 
-// ── Animated drop indicator ──────────────────────────────────────────────────
+// ── Drop indicator line ───────────────────────────────────────────────────────
+// Mirrors the reference images: same level = line flush left, child = indented
 interface IndicatorProps {
   dragDepth: Animated.SharedValue<number>;
   colors: Colors;
 }
 
 function DropIndicator({ dragDepth, colors }: IndicatorProps) {
-  const style = useAnimatedStyle(() => ({
-    paddingLeft: 16 + dragDepth.value * INDENT_SIZE,
+  const lineStyle = useAnimatedStyle(() => ({
+    marginLeft: 16 + dragDepth.value * INDENT_SIZE,
   }));
   return (
-    <Animated.View style={[styles.placeholderWrap, style]}>
-      <View style={[styles.placeholderLine, { backgroundColor: colors.accent }]} />
-    </Animated.View>
+    <View style={styles.placeholderWrap}>
+      <Animated.View style={[styles.placeholderLine, { backgroundColor: colors.accent }, lineStyle]} />
+    </View>
   );
 }
 
 export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, onEdit }: Props) {
   const [input, setInput] = useState('');
 
-  // Shared value written by the drag handle gesture, read by DropIndicator
-  const dragDepth = useSharedValue(0);
+  const dragDepth    = useSharedValue(0);
+  const startDepth   = useSharedValue(0);
+  const startAbsX    = useSharedValue(0);
+  const isDragging   = useSharedValue(false);
 
-  // JS-thread ref read in onDragEnd
   const flatItemsRef = useRef<FlatTodo[]>([]);
-  const flatItems = flattenTree(todos);
+  const flatItems    = flattenTree(todos);
   flatItemsRef.current = flatItems;
 
-  const handleAdd = () => {
-    const trimmed = input.trim();
-    if (!trimmed) return;
-    onAdd(trimmed);
-    setInput('');
-  };
+  // ── Passive gesture that observes touch X during DraggableFlatList drag ──
+  // manualActivation(true) keeps this in BEGAN state permanently, so it never
+  // competes with DraggableFlatList's internal gesture but still receives
+  // onTouchesMove events throughout the drag.
+  const trackGesture = Gesture.Pan()
+    .manualActivation(true)
+    .onTouchesDown((e) => {
+      const t = e.changedTouches[0];
+      if (t) startAbsX.value = t.absoluteX;
+    })
+    .onTouchesMove((e) => {
+      if (!isDragging.value) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const deltaX  = t.absoluteX - startAbsX.value;
+      const newDepth = Math.max(0, Math.round(startDepth.value + deltaX / PX_PER_LEVEL));
+      dragDepth.value = newDepth;
+    });
+
+  const onDragBegin = useCallback((index: number) => {
+    const depth = flatItemsRef.current[index]?.depth ?? 0;
+    isDragging.value  = true;
+    startDepth.value  = depth;
+    dragDepth.value   = depth;
+  }, [isDragging, startDepth, dragDepth]);
 
   const onDragEnd = useCallback(
     ({ data, to }: { data: FlatTodo[]; from: number; to: number }) => {
-      const finalDepth = dragDepth.value;
+      isDragging.value = false;
+      const finalDepth  = dragDepth.value;
       const newParentId = computeParentId(data, to, finalDepth);
-      const movedId = data[to]?.todo.id;
+      const movedId     = data[to]?.todo.id;
 
       const rebuilt = data.map((fi, i) =>
         i === to && movedId
           ? { ...fi, todo: { ...fi.todo, parentId: newParentId }, depth: finalDepth }
           : fi,
       );
-
       onReorder(rebuilt.map(({ todo }) => todo));
     },
-    [dragDepth, onReorder],
+    [dragDepth, isDragging, onReorder],
   );
 
   const renderItem = useCallback(
@@ -113,7 +136,6 @@ export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, 
           depth={item.depth}
           isActive={isActive}
           drag={drag}
-          dragDepth={dragDepth}
           onToggle={onToggle}
           onDelete={onDelete}
           onEdit={onEdit}
@@ -121,13 +143,20 @@ export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, 
         />
       </ScaleDecorator>
     ),
-    [dragDepth, onToggle, onDelete, onEdit, colors],
+    [onToggle, onDelete, onEdit, colors],
   );
 
   const renderPlaceholder = useCallback(
     () => <DropIndicator dragDepth={dragDepth} colors={colors} />,
     [dragDepth, colors],
   );
+
+  const handleAdd = () => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    onAdd(trimmed);
+    setInput('');
+  };
 
   const Empty = () => (
     <View style={styles.emptyWrap}>
@@ -143,16 +172,21 @@ export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      <DraggableFlatList<FlatTodo>
-        data={flatItems}
-        keyExtractor={(item) => item.todo.id}
-        renderItem={renderItem}
-        renderPlaceholder={renderPlaceholder}
-        onDragEnd={onDragEnd}
-        ListEmptyComponent={<Empty />}
-        contentContainerStyle={flatItems.length === 0 ? styles.emptyContainer : undefined}
-        activationDistance={8}
-      />
+      <GestureDetector gesture={trackGesture}>
+        <View style={styles.listWrap}>
+          <DraggableFlatList<FlatTodo>
+            data={flatItems}
+            keyExtractor={(item) => item.todo.id}
+            renderItem={renderItem}
+            renderPlaceholder={renderPlaceholder}
+            onDragBegin={onDragBegin}
+            onDragEnd={onDragEnd}
+            ListEmptyComponent={<Empty />}
+            contentContainerStyle={flatItems.length === 0 ? styles.emptyContainer : undefined}
+            activationDistance={8}
+          />
+        </View>
+      </GestureDetector>
 
       <View style={[styles.inputRow, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <TextInput
@@ -179,7 +213,8 @@ export function TodoList({ todos, colors, onAdd, onDelete, onToggle, onReorder, 
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container:      { flex: 1 },
+  listWrap:       { flex: 1 },
   emptyContainer: { flexGrow: 1 },
   emptyWrap: {
     flex: 1,
@@ -187,11 +222,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 60,
   },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 17, fontWeight: '500', marginBottom: 6 },
-  emptyHint: { fontSize: 14 },
+  emptyIcon:  { fontSize: 48, marginBottom: 12 },
+  emptyText:  { fontSize: 17, fontWeight: '500', marginBottom: 6 },
+  emptyHint:  { fontSize: 14 },
   placeholderWrap: {
-    height: 32,
+    height: 28,
     justifyContent: 'center',
   },
   placeholderLine: {

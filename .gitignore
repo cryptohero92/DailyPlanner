@@ -5,6 +5,7 @@ node_modules/
 .expo/
 dist/
 web-build/
+reference/
 expo-env.d.ts
 
 # Native builds
