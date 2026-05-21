@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1C1C1E"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dayo.app"
@@ -26,7 +21,17 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1C1C1E",
+          "image": "./assets/splash.png",
+          "resizeMode": "cover",
+          "enableFullScreenImage_legacy": true
+        }
+      ]
+    ],
     "newArchEnabled": true,
     "extra": {
       "eas": {
