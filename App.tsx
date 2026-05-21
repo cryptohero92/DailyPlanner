@@ -3,35 +3,22 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme, StyleSheet } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useState } from 'react';
 import MainScreen from './src/screens/MainScreen';
+import { SplashGate } from './src/components/SplashGate';
 
-// Keep the splash visible until the app signals it's ready
+// Hold the native splash until our full-screen splash is ready to take over.
 SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const scheme = useColorScheme();
-  const [appReady, setAppReady] = useState(false);
-
-  useEffect(() => {
-    // Load fonts, assets, or async data here if needed.
-    // For now the app has nothing to pre-load so we resolve immediately.
-    setAppReady(true);
-  }, []);
-
-  const onLayout = useCallback(async () => {
-    if (appReady) {
-      await SplashScreen.hideAsync();
-    }
-  }, [appReady]);
-
-  if (!appReady) return null;
 
   return (
-    <GestureHandlerRootView style={styles.root} onLayout={onLayout}>
+    <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-        <MainScreen />
+        <SplashGate>
+          <MainScreen />
+        </SplashGate>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
